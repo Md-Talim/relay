@@ -1,0 +1,55 @@
+# ---- Go binaries & build output ----
+bin/
+build/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# ---- Go vendor ----
+vendor/
+
+# ---- Go workspace ----
+go.work
+go.work.sum
+
+# ---- Environment / Config ----
+.env
+.env.*
+*.local
+
+# ---- Logs ----
+*.log
+
+# ---- Cache & temp files ----
+*.tmp
+*.swp
+*.swo
+
+# Go module cache (should not be committed)
+**/pkg/mod/
+**/pkg/sumdb/
+
+# ---- IDE / Editor files ----
+.zed
+.vscode/
+.history/
+
+# JetBrains
+.idea/
+
+# Vim
+*.un~
+*~
+
+# macOS / Linux
+.DS_Store
+.cache/
+
+# ---- Docker ----
+# if you build local images and output tar files
+*.tar

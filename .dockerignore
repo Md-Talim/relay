@@ -1,0 +1,10 @@
+.git/
+.gitignore
+.env
+.zed/
+*.log
+*.md
+LICENSE
+docker-compose.yml
+Dockerfile
+Makefile
