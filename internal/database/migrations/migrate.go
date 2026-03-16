@@ -51,6 +51,11 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, migrationsDir string) 
 		return err
 	}
 
+	// Strict validation: DB versions must all exists on disk
+	if err = validateAppliedVersionsExistsOnDisk(applied, migrationFiles); err != nil {
+		return err
+	}
+
 	// Execute only pending migrations, each in its own transaction
 	for _, filename := range migrationFiles {
 		if _, ok := applied[filename]; ok {
@@ -139,4 +144,29 @@ func loadAppliedMigrations(ctx context.Context, conn *pgxpool.Conn) (map[string]
 		return nil, fmt.Errorf("iterate applied versions: %w", err)
 	}
 	return applied, nil
+}
+
+func validateAppliedVersionsExistsOnDisk(appliedMigrations map[string]struct{}, migrationFiles []string) error {
+	onDisk := make(map[string]struct{}, len(migrationFiles))
+	for _, f := range migrationFiles {
+		onDisk[f] = struct{}{}
+	}
+
+	var missing []string
+	for migration := range appliedMigrations {
+		if _, ok := onDisk[migration]; !ok {
+			missing = append(missing, migration)
+		}
+	}
+
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf(
+			`migration history mismatch: applied version(s) missing on disk: %s.
+			Migration filenames are immutable version IDs; do not rename or delete applied migration files.`,
+			strings.Join(missing, ", "),
+		)
+	}
+
+	return nil
 }
