@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var migrationFilenamePattern = regexp.MustCompile(`^\d{3}_[a-z0-9_]+\.sql$`)
 
 func RunMigrations(ctx context.Context, db *pgxpool.Pool, migrationsDir string) error {
 	migrationFiles, err := listSQLMigrations(migrationsDir)
@@ -110,6 +113,13 @@ func listSQLMigrations(dir string) ([]string, error) {
 			continue
 		}
 
+		if !migrationFilenamePattern.MatchString(name) {
+			return nil, fmt.Errorf(
+				"invalid migration filename %q in %s: expected format %q (example: 001_create_tasks.sql)",
+				name, dir, `NNN_snake_case.sql`,
+			)
+		}
+
 		normalized := strings.ToLower(name)
 		if prev, ok := seen[normalized]; ok {
 			return nil, fmt.Errorf("duplicate migration filename detected (case-insensitive): %q and %q in %s", prev, name, dir)
@@ -117,6 +127,10 @@ func listSQLMigrations(dir string) ([]string, error) {
 
 		seen[normalized] = name
 		out = append(out, name)
+	}
+
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no migration files found in %s", dir)
 	}
 
 	sort.Strings(out)
