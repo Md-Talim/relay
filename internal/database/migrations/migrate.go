@@ -92,7 +92,7 @@ func listSQLMigrations(dir string) ([]string, error) {
 		return nil, err
 	}
 
-	seen := make(map[string]struct{})
+	seen := make(map[string]string) // normalized -> original
 	var out []string
 
 	for _, e := range entries {
@@ -104,11 +104,13 @@ func listSQLMigrations(dir string) ([]string, error) {
 		if !strings.HasSuffix(strings.ToLower(name), ".sql") {
 			continue
 		}
-		if _, ok := seen[name]; ok {
-			continue
+
+		normalized := strings.ToLower(name)
+		if prev, ok := seen[normalized]; ok {
+			return nil, fmt.Errorf("duplicate migration filename detected (case-insensitive): %q and %q in %s", prev, name, dir)
 		}
 
-		seen[name] = struct{}{}
+		seen[normalized] = name
 		out = append(out, name)
 	}
 
