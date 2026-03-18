@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -16,12 +17,13 @@ import (
 var migrationFilenamePattern = regexp.MustCompile(`^\d{3}_[a-z0-9_]+\.sql$`)
 
 func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, migrationsDir string) error {
-	migrationFiles, err := listSQLMigrations(migrationsDir)
-	if err != nil {
-		return fmt.Errorf("list migrations: %w", err)
+	if logger == nil {
+		logger = slog.Default()
 	}
-
 	logger = logger.With("component", "migrations", "dir", migrationsDir)
+
+	start := time.Now()
+	logger.Info("starting migration run")
 
 	conn, err := db.Acquire(ctx)
 	if err != nil {
@@ -31,10 +33,13 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, m
 
 	// Session-level advisory lock
 	lockName := "relay:migrations"
+	logger.Debug("acquiring advisory lock", "lock_name", lockName)
 
 	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock(hashtextextended($1, 0))", lockName); err != nil {
 		return fmt.Errorf("acquire migration lock: %w", err)
 	}
+	logger.Debug("advisory lock acquired", "lock_name", lockName)
+
 	defer func() {
 		if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_unlock(hashtextextended($1, 0))", lockName); err != nil {
 			logger.Warn("failed to release advisory lock", "lock_name", lockName, "err", err)
@@ -53,20 +58,32 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, m
 		return fmt.Errorf("create schema_migrations table: %w", err)
 	}
 
+	migrationFiles, err := listSQLMigrations(migrationsDir)
+	if err != nil {
+		return fmt.Errorf("list migrations: %w", err)
+	}
+	logger.Debug("migration files discoverd", "count", len(migrationFiles))
+
 	// Read already-applied versions from DB
 	applied, err := loadAppliedMigrations(ctx, conn)
 	if err != nil {
 		return err
 	}
+	logger.Debug("loaded applied migrations", "count", len(applied))
 
 	// Strict validation: DB versions must all exists on disk
 	if err = validateAppliedVersionsExistsOnDisk(applied, migrationFiles); err != nil {
 		return err
 	}
 
+	appliedNow := 0
+	skipped := 0
+
 	// Execute only pending migrations, each in its own transaction
 	for _, filename := range migrationFiles {
 		if _, ok := applied[filename]; ok {
+			skipped++
+			logger.Debug("skipping already-applied migration", "version", filename)
 			continue
 		}
 
@@ -75,6 +92,9 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, m
 		if err != nil {
 			return fmt.Errorf("read migration file %s: %w", filename, err)
 		}
+
+		logger.Info("applying migration", "version", filename)
+		migrationStart := time.Now()
 
 		tx, err := conn.Begin(ctx)
 		if err != nil {
@@ -94,7 +114,18 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, m
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("commit migration %s: %w", filename, err)
 		}
+
+		appliedNow++
+		logger.Info("migration applied", "version", filename, "duration_ms", time.Since(migrationStart).Milliseconds())
 	}
+
+	logger.Info(
+		"migration run complete",
+		"applied", appliedNow,
+		"skipped", skipped,
+		"total_files", len(migrationFiles),
+		"duration_ms", time.Since(start).Milliseconds(),
+	)
 
 	return nil
 }
