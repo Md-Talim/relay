@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,7 +42,10 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, m
 	logger.Debug("advisory lock acquired", "lock_name", lockName)
 
 	defer func() {
-		if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_unlock(hashtextextended($1, 0))", lockName); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if _, err := conn.Exec(cleanupCtx, "SELECT pg_advisory_unlock(hashtextextended($1, 0))", lockName); err != nil {
 			logger.Warn("failed to release advisory lock", "lock_name", lockName, "err", err)
 			return
 		}
@@ -62,7 +66,7 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, m
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
 	}
-	logger.Debug("migration files discoverd", "count", len(migrationFiles))
+	logger.Debug("migration files discovered", "count", len(migrationFiles))
 
 	// Read already-applied versions from DB
 	applied, err := loadAppliedMigrations(ctx, conn)
@@ -101,18 +105,35 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, m
 			return fmt.Errorf("begin tx for %s: %w", filename, err)
 		}
 
-		if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("execute migration %s: %w", filename, err)
-		}
+		committed := false
+		func() {
+			defer func() {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
 
-		if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, filename); err != nil {
-			_ = tx.Rollback(ctx)
-			return fmt.Errorf("record migration %s: %w", filename, err)
-		}
+				if !committed {
+					if rbErr := tx.Rollback(cleanupCtx); rbErr != nil && rbErr != pgx.ErrTxClosed {
+						logger.Warn("rollback after failed migration step returned error", "version", filename, "err", rbErr)
+					}
+				}
+			}()
 
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("commit migration %s: %w", filename, err)
+			if _, err = tx.Exec(ctx, string(sqlBytes)); err != nil {
+				return
+			}
+
+			if _, err = tx.Exec(ctx, `INSERT INTO schema_migrations(version) VALUES($1)`, filename); err != nil {
+				return
+			}
+
+			if err = tx.Commit(ctx); err != nil {
+				return
+			}
+			committed = true
+		}()
+
+		if err != nil {
+			return fmt.Errorf("apply migration %s: %w", filename, err)
 		}
 
 		appliedNow++
