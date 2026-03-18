@@ -30,7 +30,7 @@ func main() {
 	mctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	if err := migrations.RunMigrations(mctx, pool, "internal/database/migrations"); err != nil {
+	if err := migrations.RunMigrations(mctx, pool, logger, "internal/database/migrations"); err != nil {
 		logger.Error("migration run failed", "err", err)
 		os.Exit(1)
 	}

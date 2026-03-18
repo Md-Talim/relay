@@ -3,6 +3,7 @@ package migrations
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,11 +15,13 @@ import (
 
 var migrationFilenamePattern = regexp.MustCompile(`^\d{3}_[a-z0-9_]+\.sql$`)
 
-func RunMigrations(ctx context.Context, db *pgxpool.Pool, migrationsDir string) error {
+func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, migrationsDir string) error {
 	migrationFiles, err := listSQLMigrations(migrationsDir)
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
 	}
+
+	logger = logger.With("component", "migrations", "dir", migrationsDir)
 
 	conn, err := db.Acquire(ctx)
 	if err != nil {
@@ -34,8 +37,10 @@ func RunMigrations(ctx context.Context, db *pgxpool.Pool, migrationsDir string) 
 	}
 	defer func() {
 		if _, err := conn.Exec(context.Background(), "SELECT pg_advisory_unlock(hashtextextended($1, 0))", lockName); err != nil {
-			// log error here
+			logger.Warn("failed to release advisory lock", "lock_name", lockName, "err", err)
+			return
 		}
+		logger.Debug("advisory lock released", "lock_name", lockName)
 	}()
 
 	// Ensure migrations tracking table exists
