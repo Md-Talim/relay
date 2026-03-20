@@ -15,7 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var migrationFilenamePattern = regexp.MustCompile(`^\d{3}_[a-z0-9_]+\.sql$`)
+var migrationFilenamePattern = regexp.MustCompile(`^\d{6}_[a-z0-9_]+\.sql$`)
 
 func RunMigrations(ctx context.Context, db *pgxpool.Pool, logger *slog.Logger, migrationsDir string) error {
 	if logger == nil {
