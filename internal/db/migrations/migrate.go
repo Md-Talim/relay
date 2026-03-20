@@ -186,10 +186,6 @@ func listSQLMigrations(dir string) ([]string, error) {
 		out = append(out, name)
 	}
 
-	if len(out) == 0 {
-		return nil, fmt.Errorf("no migration files found in %s", dir)
-	}
-
 	sort.Strings(out)
 	return out, nil
 }

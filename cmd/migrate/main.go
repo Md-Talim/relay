@@ -6,21 +6,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/md-talim/relay/internal/database/migrations"
+	"github.com/md-talim/relay/internal/db"
+	"github.com/md-talim/relay/internal/db/migrations"
 )
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	ctx := context.Background()
 
-	dbURL := os.Getenv("RELAY_DATABASE_URL")
-	if dbURL == "" {
-		logger.Error("missing RELAY_DATABASE_URL")
-		os.Exit(1)
-	}
-
-	pool, err := pgxpool.New(ctx, dbURL)
+	pool, err := db.Open(ctx)
 	if err != nil {
 		logger.Error("failed to create db pool", "err", err)
 		os.Exit(1)
@@ -30,7 +24,7 @@ func main() {
 	mctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	if err := migrations.RunMigrations(mctx, pool, logger, "internal/database/migrations"); err != nil {
+	if err := migrations.RunMigrations(mctx, pool, logger, "internal/db/migrations"); err != nil {
 		logger.Error("migration run failed", "err", err)
 		os.Exit(1)
 	}
