@@ -11,7 +11,12 @@ import (
 func main() {
 	start := time.Now()
 
-	app := app.NewApplication(start)
+	app, err := app.NewApplication(start)
+	if err != nil {
+		panic(err)
+	}
+	defer app.DB.Close()
+
 	routes := app.SetupRoutes()
 
 	server := &http.Server{
