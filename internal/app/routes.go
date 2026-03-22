@@ -11,5 +11,7 @@ func (app *Application) SetupRoutes() *http.ServeMux {
 	mux.HandleFunc("/readyz", app.HealthHandler.CheckReadiness)
 	mux.HandleFunc("/health", app.HealthHandler.CheckReadiness)
 
+	mux.HandleFunc("POST /tasks", app.TaskHandler.HandleCreateTask)
+
 	return mux
 }
