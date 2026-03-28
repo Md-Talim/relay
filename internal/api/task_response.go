@@ -8,18 +8,19 @@ import (
 )
 
 type taskResponse struct {
-	ID          uuid.UUID  `json:"id"`
-	Type        string     `json:"type"`
-	Status      string     `json:"status"`
-	Priority    int        `json:"priority"`
-	Attempts    int        `json:"attempts"`
-	MaxRetries  int        `json:"max_retries"`
-	RunAt       time.Time  `json:"run_at"`
-	StartedAt   *time.Time `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at"`
-	LastError   *string    `json:"last_error"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ID             uuid.UUID  `json:"id"`
+	Type           string     `json:"type"`
+	Status         string     `json:"status"`
+	Priority       int        `json:"priority"`
+	Attempts       int        `json:"attempts"`
+	MaxRetries     int        `json:"max_retries"`
+	RunAt          time.Time  `json:"run_at"`
+	IdempotencyKey *string    `json:"idempotency_key,omitempty"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	LastError      *string    `json:"last_error,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 func newTaskResponse(t *store.Task) taskResponse {

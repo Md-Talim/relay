@@ -35,12 +35,16 @@ func (h *TaskHandler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	task := req.toTask()
 
-	if err := h.taskStore.Create(r.Context(), task); err != nil {
+	created, err := h.taskStore.Create(r.Context(), task)
+	if err != nil {
 		h.logger.Error("failed to create task", "err", err, "task_type", task.Type)
 		writeError(w, http.StatusInternalServerError, "failed to create task")
 		return
 	}
 
-	resp := newTaskResponse(task)
-	writeJSON(w, http.StatusCreated, resp)
+	status := http.StatusCreated
+	if !created {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, newTaskResponse(task))
 }
