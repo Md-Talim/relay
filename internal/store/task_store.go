@@ -65,9 +65,10 @@ func (ts *TaskStore) Create(ctx context.Context, task *Task) (bool, error) {
 				return false, ts.getByTypeAndIdempotencyKey(ctx, task)
 			}
 		}
+		return false, err
 	}
 
-	return true, err
+	return true, nil
 }
 
 func (ts *TaskStore) getByTypeAndIdempotencyKey(ctx context.Context, task *Task) error {

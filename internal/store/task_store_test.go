@@ -77,6 +77,30 @@ func TestCreateTask_NewTask(t *testing.T) {
 	}
 }
 
+func TestCreateTask_DelayedTask(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		truncateTables(ctx, testDB)
+	})
+	future := time.Now().Add(1 * time.Hour).UTC().Truncate(time.Microsecond)
+
+	task := &store.Task{
+		Type:       "send_email",
+		Payload:    json.RawMessage(`{}`),
+		Priority:   0,
+		MaxRetries: 0,
+		RunAt:      future,
+	}
+
+	_, err := testStore.Create(ctx, task)
+	if err != nil {
+		t.Fatalf("Create() delayed task returned unexpected error: %v", err)
+	}
+	if !task.RunAt.Equal(future) {
+		t.Errorf("Create() run_at = %v, want %v", task.RunAt, future)
+	}
+}
+
 func TestCreateTask_IdempotencyKey_ReturnExisting(t *testing.T) {
 	ctx := context.Background()
 	t.Cleanup(func() {
@@ -116,6 +140,80 @@ func TestCreateTask_IdempotencyKey_ReturnExisting(t *testing.T) {
 	}
 	if task2.ID != task1.ID {
 		t.Errorf("Create() returned id=%v for duplicate, want original id=%v", task2.ID, task1.ID)
+	}
+}
+
+func TestCreateTask_IdempotencyKey_SameKeyDifferentType(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		truncateTables(ctx, testDB)
+	})
+
+	key := "order_123"
+	task1 := &store.Task{
+		Type:           "send_email",
+		IdempotencyKey: &key,
+		Payload:        json.RawMessage(`{}`),
+		Priority:       0,
+		MaxRetries:     0,
+		RunAt:          time.Now().Add(5 * time.Minute),
+	}
+
+	task2 := &store.Task{
+		Type:           "process_payment",
+		IdempotencyKey: &key,
+		Payload:        json.RawMessage(`{}`),
+		Priority:       0,
+		MaxRetries:     0,
+		RunAt:          time.Now().Add(5 * time.Minute),
+	}
+
+	if _, err := testStore.Create(ctx, task1); err != nil {
+		t.Fatalf("Create() send_email returned unexpected error: %v", err)
+	}
+
+	created, err := testStore.Create(ctx, task2)
+	if err != nil {
+		t.Log(created)
+		t.Fatalf("Create() process_payment with same key returned unexpected error: %v", err)
+	}
+	if !created {
+		t.Fatal("Create() returned created=false for same key but different type, want true")
+	}
+}
+
+func TestCreateTask_NilIdempotencyKey_NoDuplicateConstraint(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		truncateTables(ctx, testDB)
+	})
+
+	task1 := &store.Task{
+		Type:           "send_email",
+		IdempotencyKey: nil,
+		Payload:        json.RawMessage(`{}`),
+		Priority:       0,
+		MaxRetries:     0,
+		RunAt:          time.Now().Add(5 * time.Minute),
+	}
+	task2 := &store.Task{
+		Type:           "send_email",
+		IdempotencyKey: nil,
+		Payload:        json.RawMessage(`{}`),
+		Priority:       0,
+		MaxRetries:     0,
+		RunAt:          time.Now().Add(5 * time.Minute),
+	}
+
+	if _, err := testStore.Create(ctx, task1); err != nil {
+		t.Fatalf("Create() first nil key returned unexpected error: %v", err)
+	}
+	created, err := testStore.Create(ctx, task2)
+	if err != nil {
+		t.Fatalf("Create() second nil key returned unexpected error: %v", err)
+	}
+	if !created {
+		t.Fatal("Create() returned created=false for nil idempotency key, want true (nulls are not unique-constrained)")
 	}
 }
 
