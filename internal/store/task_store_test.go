@@ -251,6 +251,62 @@ func TestCreateTask_IdempotencyKey_DifferentPayload_ReturnsConflictError(t *test
 	}
 }
 
+func TestGetTaskById(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		truncateTables(ctx, testDB)
+	})
+
+	task := &store.Task{
+		Type:       "send_email",
+		Payload:    json.RawMessage(`{}`),
+		Priority:   0,
+		MaxRetries: 0,
+		RunAt:      time.Now().Add(5 * time.Minute),
+	}
+
+	created, err := testStore.Create(ctx, task)
+	if err != nil {
+		t.Fatalf("Create() returned unexpected error: %v", err)
+	}
+	if !created {
+		t.Fatal("Create() returned created=false, want true for new task")
+	}
+
+	existingTask, err := testStore.GetById(ctx, task.ID.String())
+	if err != nil {
+		t.Fatalf("GetById() returned unexpected error: %v", err)
+	}
+	if existingTask == nil {
+		t.Fatalf("GetById() returned nil, expected the created task")
+	}
+	if existingTask.ID != task.ID {
+		t.Errorf("GetById() returned wrong ID: got %v, want %v", existingTask.ID, task.ID)
+	}
+	if existingTask.Type != task.Type {
+		t.Errorf("GetById() returned wrong Type: got %v, want %v", existingTask.Type, task.Type)
+	}
+	if existingTask.Status != "PENDING" {
+		t.Errorf("GetById() returned wrong Status: got %v, want \"PENDING\"", existingTask.Type)
+	}
+}
+
+func TestGetTaskById_NotFound(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		truncateTables(ctx, testDB)
+	})
+
+	nonExistentID := uuid.New().String()
+	task, err := testStore.GetById(ctx, nonExistentID)
+	if err != nil {
+		t.Fatalf("GetById() with non-existent ID returned unexpected error: %v", err)
+	}
+	if task != nil {
+		t.Fatalf("GetById() with non-existent ID returned a task, want nil")
+	}
+}
+
 func setupTestDB(ctx context.Context) (*pgxpool.Pool, error) {
 	os.Setenv("RELAY_DATABASE_URL", "postgres://relay:relay@localhost:5433/relay_test?sslmode=disable")
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -86,6 +87,29 @@ func (ts *TaskStore) Create(ctx context.Context, task *Task) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (ts *TaskStore) GetById(ctx context.Context, id string) (*Task, error) {
+	query := `
+	SELECT
+		id, type, payload, idempotency_key, status, priority, attempts, max_retries,
+		run_at, started_at, completed_at, last_error, created_at, updated_at
+    FROM tasks WHERE id = $1
+	`
+
+	task := &Task{}
+	err := ts.db.QueryRow(ctx, query, id).Scan(
+		&task.ID, &task.Type, &task.Payload, &task.IdempotencyKey, &task.Status, &task.Priority, &task.Attempts,
+		&task.MaxRetries, &task.RunAt, &task.StartedAt, &task.CompletedAt, &task.LastError, &task.CreatedAt, &task.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return task, nil
 }
 
 func (ts *TaskStore) getByTypeAndIdempotencyKey(ctx context.Context, taskType, idempotencyKey string) (*Task, error) {
