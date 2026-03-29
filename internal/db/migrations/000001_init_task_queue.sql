@@ -13,8 +13,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     -- Nullable: callers opt in per submission; no key = no dedup.
     idempotency_key VARCHAR(255)    NULL,
 
-    type            VARCHAR(100)    NOT NULL,
+    type            VARCHAR(100)    NOT NULL CHECK (type <> ''),
     payload         JSONB           NOT NULL DEFAULT '{}',
+    payload_hash    BYTEA           NOT NULL,
 
     -- State machine: PENDING → RUNNING → COMPLETED
     --                                  ↘ retry → PENDING
