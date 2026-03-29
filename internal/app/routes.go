@@ -7,11 +7,11 @@ import (
 func (app *Application) SetupRoutes() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/livez", app.HealthHandler.CheckLiveness)
-	mux.HandleFunc("/readyz", app.HealthHandler.CheckReadiness)
-	mux.HandleFunc("/health", app.HealthHandler.CheckReadiness)
+	mux.HandleFunc("GET /api/v1/livez", app.HealthHandler.CheckLiveness)
+	mux.HandleFunc("GET /api/v1/readyz", app.HealthHandler.CheckReadiness)
+	mux.HandleFunc("GET /api/v1/health", app.HealthHandler.CheckReadiness)
 
-	mux.HandleFunc("POST /tasks", app.TaskHandler.HandleCreateTask)
+	mux.HandleFunc("POST /api/v1/tasks", app.TaskHandler.HandleCreateTask)
 
 	return mux
 }
