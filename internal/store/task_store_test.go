@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"testing"
@@ -132,7 +133,6 @@ func TestCreateTask_IdempotencyKey_ReturnExisting(t *testing.T) {
 
 	created, err := testStore.Create(ctx, task2)
 	if err != nil {
-		t.Log(created)
 		t.Fatalf("Create() duplicate idempotency key returned unexpected error: %v", err)
 	}
 	if created {
@@ -174,7 +174,6 @@ func TestCreateTask_IdempotencyKey_SameKeyDifferentType(t *testing.T) {
 
 	created, err := testStore.Create(ctx, task2)
 	if err != nil {
-		t.Log(created)
 		t.Fatalf("Create() process_payment with same key returned unexpected error: %v", err)
 	}
 	if !created {
@@ -214,6 +213,41 @@ func TestCreateTask_NilIdempotencyKey_NoDuplicateConstraint(t *testing.T) {
 	}
 	if !created {
 		t.Fatal("Create() returned created=false for nil idempotency key, want true (nulls are not unique-constrained)")
+	}
+}
+
+func TestCreateTask_IdempotencyKey_DifferentPayload_ReturnsConflictError(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		truncateTables(ctx, testDB)
+	})
+
+	key := "order_123"
+	task1 := &store.Task{
+		Type:           "send_email",
+		IdempotencyKey: &key,
+		Payload:        json.RawMessage(`{}`),
+		Priority:       0,
+		MaxRetries:     0,
+		RunAt:          time.Now().Add(5 * time.Minute),
+	}
+
+	task2 := &store.Task{
+		Type:           "send_email",
+		IdempotencyKey: &key,
+		Payload:        json.RawMessage(`{ "to": "dummyemail@example.com", "subject": "test email" }`),
+		Priority:       0,
+		MaxRetries:     0,
+		RunAt:          time.Now().Add(5 * time.Minute),
+	}
+
+	if _, err := testStore.Create(ctx, task1); err != nil {
+		t.Fatalf("Create() first insert returned unexpected error: %v", err)
+	}
+
+	_, err := testStore.Create(ctx, task2)
+	if err == nil || !errors.Is(err, store.ErrTaskConflict) {
+		t.Fatalf("expected ErrTaskConflict, got %v", err)
 	}
 }
 

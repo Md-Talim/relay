@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -37,6 +38,10 @@ func (h *TaskHandler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.taskStore.Create(r.Context(), task)
 	if err != nil {
+		if errors.Is(err, store.ErrTaskConflict) {
+			writeError(w, http.StatusConflict, "idempotency key reused with different payload")
+			return
+		}
 		h.logger.Error("failed to create task", "err", err, "task_type", task.Type)
 		writeError(w, http.StatusInternalServerError, "failed to create task")
 		return
