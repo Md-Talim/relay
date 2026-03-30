@@ -35,15 +35,20 @@ type Task struct {
 	UpdatedAt      time.Time
 }
 
-type TaskStore struct {
+type TaskStore interface {
+	Create(ctx context.Context, task *Task) (bool, error)
+	GetById(ctx context.Context, id string) (*Task, error)
+}
+
+type PostgresTaskStore struct {
 	db *pgxpool.Pool
 }
 
-func NewTaskStore(db *pgxpool.Pool) *TaskStore {
-	return &TaskStore{db: db}
+func NewTaskStore(db *pgxpool.Pool) *PostgresTaskStore {
+	return &PostgresTaskStore{db: db}
 }
 
-func (ts *TaskStore) Create(ctx context.Context, task *Task) (bool, error) {
+func (ts *PostgresTaskStore) Create(ctx context.Context, task *Task) (bool, error) {
 	payloadHash, err := hashPayload(task.Payload) // new task payload hash
 	if err != nil {
 		return false, err
@@ -89,7 +94,7 @@ func (ts *TaskStore) Create(ctx context.Context, task *Task) (bool, error) {
 	return true, nil
 }
 
-func (ts *TaskStore) GetById(ctx context.Context, id string) (*Task, error) {
+func (ts *PostgresTaskStore) GetById(ctx context.Context, id string) (*Task, error) {
 	query := `
 	SELECT
 		id, type, payload, idempotency_key, status, priority, attempts, max_retries,
@@ -112,7 +117,7 @@ func (ts *TaskStore) GetById(ctx context.Context, id string) (*Task, error) {
 	return task, nil
 }
 
-func (ts *TaskStore) getByTypeAndIdempotencyKey(ctx context.Context, taskType, idempotencyKey string) (*Task, error) {
+func (ts *PostgresTaskStore) getByTypeAndIdempotencyKey(ctx context.Context, taskType, idempotencyKey string) (*Task, error) {
 	query := `
 	SELECT
 		id, type, payload, payload_hash, idempotency_key, status, priority, attempts, max_retries,

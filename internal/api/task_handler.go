@@ -11,11 +11,11 @@ import (
 )
 
 type TaskHandler struct {
-	taskStore *store.TaskStore
+	taskStore store.TaskStore
 	logger    *slog.Logger
 }
 
-func NewTaskHandler(taskStore *store.TaskStore, logger *slog.Logger) *TaskHandler {
+func NewTaskHandler(taskStore store.TaskStore, logger *slog.Logger) *TaskHandler {
 	return &TaskHandler{taskStore: taskStore, logger: logger}
 }
 

@@ -16,7 +16,7 @@ import (
 	"github.com/md-talim/relay/internal/store"
 )
 
-var testStore *store.TaskStore
+var testStore store.TaskStore
 var testDB *pgxpool.Pool
 
 func TestMain(m *testing.M) {
