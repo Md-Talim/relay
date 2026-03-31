@@ -96,7 +96,7 @@ func (h *TaskHandler) HandleDeleteTask(w http.ResponseWriter, r *http.Request) {
 
 	switch task.Status {
 	case "RUNNING":
-		writeJSON(w, http.StatusConflict, map[string]string{
+		writeJSON(w, http.StatusConflict, envelope{
 			"error":  "task is currently running and cannot be canceled",
 			"status": "RUNNING",
 		})
