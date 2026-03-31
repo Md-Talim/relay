@@ -13,6 +13,7 @@ func (app *Application) SetupRoutes() *http.ServeMux {
 
 	mux.HandleFunc("POST /api/v1/tasks", app.TaskHandler.HandleCreateTask)
 	mux.HandleFunc("GET /api/v1/tasks/{id}", app.TaskHandler.HandleGetTaskById)
+	mux.HandleFunc("DELETE /api/v1/tasks/{id}", app.TaskHandler.HandleDeleteTask)
 
 	return mux
 }

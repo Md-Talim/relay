@@ -38,6 +38,7 @@ type Task struct {
 type TaskStore interface {
 	Create(ctx context.Context, task *Task) (bool, error)
 	GetById(ctx context.Context, id string) (*Task, error)
+	Cancel(ctx context.Context, id string) (*Task, error)
 }
 
 type PostgresTaskStore struct {
@@ -115,6 +116,35 @@ func (ts *PostgresTaskStore) GetById(ctx context.Context, id string) (*Task, err
 	}
 
 	return task, nil
+}
+
+func (ts *PostgresTaskStore) Cancel(ctx context.Context, id string) (*Task, error) {
+	query := `
+		UPDATE tasks SET status = 'CANCELED', updated_at = now()
+		WHERE id = $1 AND status = 'PENDING'
+		RETURNING id, status, updated_at
+	`
+
+	task := &Task{}
+	err := ts.db.QueryRow(ctx, query).Scan(&task.ID, &task.Status, &task.UpdatedAt)
+	if err == nil {
+		// canceled successfully - TODO: log it
+		return task, nil
+	}
+
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err // real DB error
+	}
+
+	current, err := ts.GetById(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, err
+	}
+
+	return current, nil
 }
 
 func (ts *PostgresTaskStore) getByTypeAndIdempotencyKey(ctx context.Context, taskType, idempotencyKey string) (*Task, error) {
