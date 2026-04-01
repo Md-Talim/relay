@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -119,32 +120,54 @@ func (ts *PostgresTaskStore) GetById(ctx context.Context, id string) (*Task, err
 }
 
 func (ts *PostgresTaskStore) Cancel(ctx context.Context, id string) (*Task, error) {
-	query := `
+	tx, err := ts.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	updateQuery := `
 		UPDATE tasks SET status = 'CANCELED', updated_at = now()
-		WHERE id = $1 AND status = 'PENDING'
-		RETURNING id, status, updated_at
-	`
+        WHERE id = $1 AND status = 'PENDING'
+        RETURNING id, type, status, priority, attempts, max_retries,
+                  run_at, idempotency_key, started_at, completed_at,
+                  last_error, created_at, updated_at
+    `
 
 	task := &Task{}
-	err := ts.db.QueryRow(ctx, query).Scan(&task.ID, &task.Status, &task.UpdatedAt)
-	if err == nil {
-		// canceled successfully - TODO: log it
-		return task, nil
+	err = tx.QueryRow(ctx, updateQuery, id).Scan(
+		&task.ID, &task.Type, &task.Status, &task.Priority, &task.Attempts,
+		&task.MaxRetries, &task.RunAt, &task.IdempotencyKey, &task.StartedAt,
+		&task.CompletedAt, &task.LastError, &task.CreatedAt, &task.UpdatedAt,
+	)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("cancel task: %w", err) // read db error
 	}
 
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err // real DB error
-	}
-
-	current, err := ts.GetById(ctx, id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrTaskNotFound
+	if errors.Is(err, pgx.ErrNoRows) {
+		// not PENDING - no log needed, return current state
+		current, err := ts.GetById(ctx, id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ErrTaskNotFound // task not found
+			}
+			return nil, err
 		}
-		return nil, err
+		return current, nil
 	}
 
-	return current, nil
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO task_logs(task_id, status, message)
+		VALUES($1, $2, $3)
+	`, task.ID, task.Status, "task canceled by user request"); err != nil {
+		return nil, fmt.Errorf("insert cancel log: %w", err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit cancel: %w", err)
+	}
+
+	return task, nil
 }
 
 func (ts *PostgresTaskStore) getByTypeAndIdempotencyKey(ctx context.Context, taskType, idempotencyKey string) (*Task, error) {
