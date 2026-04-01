@@ -28,7 +28,7 @@ func (r *createTaskRequest) toTask() *store.Task {
 	}
 }
 
-func (r *createTaskRequest) normalize() {
+func (r *createTaskRequest) normalize(now time.Time) {
 	if r.Payload == nil {
 		r.Payload = json.RawMessage(`{}`)
 	}
@@ -41,14 +41,11 @@ func (r *createTaskRequest) normalize() {
 		r.MaxRetries = &defaultRetries
 	}
 	if r.RunAt == nil {
-		now := time.Now()
 		r.RunAt = &now
 	}
 }
 
-func (r *createTaskRequest) validate() error {
-	now := time.Now()
-
+func (r *createTaskRequest) validate(now time.Time) error {
 	if r.Type == "" {
 		return errors.New("type is required")
 	}

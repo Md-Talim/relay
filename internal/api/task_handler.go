@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/md-talim/relay/internal/store"
@@ -28,9 +29,11 @@ func (h *TaskHandler) HandleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.normalize()
+	now := time.Now()
 
-	if err := req.validate(); err != nil {
+	req.normalize(now)
+
+	if err := req.validate(now); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
