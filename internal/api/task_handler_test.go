@@ -172,9 +172,14 @@ func TestCreateTask_RunAtPast(t *testing.T) {
 }
 
 type fakeTaskStore struct {
-	createFn   func(ctx context.Context, task *store.Task) (bool, error)
-	getById    func(ctx context.Context, id string) (*store.Task, error)
-	cancelById func(ctx context.Context, id string) (*store.Task, error)
+	createFn      func(ctx context.Context, task *store.Task) (bool, error)
+	getById       func(ctx context.Context, id string) (*store.Task, error)
+	cancelById    func(ctx context.Context, id string) (*store.Task, error)
+	claim         func(ctx context.Context, workerID string) (*store.Task, error)
+	heartbeat     func(ctx context.Context, taskID, workerID string) (int64, error)
+	markCompleted func(ctx context.Context, taskID string) error
+	markPending   func(ctx context.Context, taskID, lastError string, runAt time.Time) error
+	markDead      func(ctx context.Context, taskID, lastError string) error
 }
 
 func (f *fakeTaskStore) Create(ctx context.Context, task *store.Task) (bool, error) {
@@ -187,6 +192,26 @@ func (f *fakeTaskStore) GetById(ctx context.Context, id string) (*store.Task, er
 
 func (f *fakeTaskStore) Cancel(ctx context.Context, id string) (*store.Task, error) {
 	return f.cancelById(ctx, id)
+}
+
+func (f *fakeTaskStore) Claim(ctx context.Context, workerID string) (*store.Task, error) {
+	return f.claim(ctx, workerID)
+}
+
+func (f *fakeTaskStore) Heartbeat(ctx context.Context, taskID, workerID string) (int64, error) {
+	return f.heartbeat(ctx, taskID, workerID)
+}
+
+func (f *fakeTaskStore) MarkCompleted(ctx context.Context, taskID string) error {
+	return f.markCompleted(ctx, taskID)
+}
+
+func (f *fakeTaskStore) MarkPending(ctx context.Context, taskID, lastError string, runAt time.Time) error {
+	return f.markPending(ctx, taskID, lastError, runAt)
+}
+
+func (f *fakeTaskStore) MarkDead(ctx context.Context, taskID, lastError string) error {
+	return f.markDead(ctx, taskID, lastError)
 }
 
 func newRequest(body string) *http.Request {

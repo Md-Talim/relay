@@ -40,6 +40,9 @@ type TaskStore interface {
 	Create(ctx context.Context, task *Task) (bool, error)
 	GetById(ctx context.Context, id string) (*Task, error)
 	Cancel(ctx context.Context, id string) (*Task, error)
+	Claim(ctx context.Context, workerID string) (*Task, error)
+	MarkCompleted(ctx context.Context, taskID string) error
+	MarkDead(ctx context.Context, taskID, lastError string) error
 }
 
 type PostgresTaskStore struct {
@@ -168,6 +171,141 @@ func (ts *PostgresTaskStore) Cancel(ctx context.Context, id string) (*Task, erro
 	}
 
 	return task, nil
+}
+
+func (ts *PostgresTaskStore) Claim(ctx context.Context, workerID string) (*Task, error) {
+	tx, err := ts.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	claimQuery := `
+		UPDATE tasks
+		SET
+			status = 'RUNNING'
+			locked_by = $1
+			locked_at = now()
+			started_at = now()
+			attempts = attempts + 1
+			updated_at = now()
+		WHERE id = (
+			SELECT id FROM tasks
+			WHERE status = 'PENDING' AND run_at <= now()
+			ORDER BY priority DESC, run_at ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, type, payload, attempts, max_retries, idempotency_key
+	`
+
+	task := &Task{}
+	err = tx.QueryRow(ctx, claimQuery, workerID).Scan(
+		&task.ID, &task.Type, &task.Payload,
+		&task.Attempts, &task.MaxRetries, &task.IdempotencyKey,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, ErrTaskNotAvailable
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err = tx.Exec(ctx,
+		`INSERT INTO task_logs(task_id, status, message) VALUES($1, $2, $3)`,
+		task.ID, "RUNNING", fmt.Sprintf("claimed by worker %s (attempt %d/%d)", workerID, task.Attempts, task.MaxRetries),
+	); err != nil {
+		return nil, fmt.Errorf("insert claim log: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit claim: %w", err)
+	}
+
+	return task, nil
+}
+
+func (ts *PostgresTaskStore) MarkCompleted(ctx context.Context, taskID string) error {
+	tx, err := ts.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	updateQuery := `
+		UPDATE tasks
+		SET
+			status = 'COMPLETED',
+			completed_at = now(),
+			locked_by = NULL,
+			locked_at = NULL,
+			updated_at = now()
+		WHERE id = $1 AND status = 'RUNNING'
+		RETURNING id
+	`
+
+	var id uuid.UUID
+	if err := tx.QueryRow(ctx, updateQuery, taskID).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrTaskNotFound
+		}
+		return fmt.Errorf("mark complete: %w", err)
+	}
+
+	if _, err := tx.Exec(
+		ctx,
+		`INSERT INTO task_logs(task_id, status, message) VALUES($1, $2, $3)`,
+		id, "COMPLETED", "task completed successfully",
+	); err != nil {
+		return fmt.Errorf("insert complete log: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit complete: %w", err)
+	}
+
+	return nil
+}
+
+func (ts *PostgresTaskStore) MarkDead(ctx context.Context, taskID, lastError string) error {
+	tx, err := ts.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	updateQuery := `
+			UPDATE tasks
+			SET
+				status = 'DEAD',
+				last_error = $2,
+				locked_by = NULL,
+				locked_at = NULL,
+				updated_at = now()
+			WHERE id = $1 AND status = 'RUNNING'
+			RETURNING id
+		`
+
+	var id uuid.UUID
+	if err := tx.QueryRow(ctx, updateQuery, taskID, lastError).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrTaskNotFound
+		}
+		return fmt.Errorf("mark dead: %w", err)
+	}
+
+	if _, err := tx.Exec(
+		ctx,
+		`INSERT INTO task_logs(task_id, status, message) VALUES($1, $2, $3)`,
+		id, "DEAD", fmt.Sprintf("task marked dead: %s", lastError),
+	); err != nil {
+		return fmt.Errorf("insert dead log: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit dead: %w", err)
+	}
+	return nil
 }
 
 func (ts *PostgresTaskStore) getByTypeAndIdempotencyKey(ctx context.Context, taskType, idempotencyKey string) (*Task, error) {
