@@ -4,3 +4,4 @@ import "errors"
 
 var ErrTaskConflict = errors.New("task conflict: idempotency key reused with different payload")
 var ErrTaskNotFound = errors.New("task not found")
+var ErrTaskNotAvailable = errors.New("task not available")

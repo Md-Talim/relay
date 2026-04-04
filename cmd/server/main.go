@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/md-talim/relay/internal/app"
@@ -17,6 +20,11 @@ func main() {
 	}
 	defer application.DB.Close()
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	application.WorkerPool.Start(ctx)
+
 	routes := application.SetupRoutes()
 
 	server := &http.Server{
@@ -25,9 +33,25 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	application.Logger.Info("http server starting", "addr", server.Addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		application.Logger.Error("http server failed", "err", err)
+	go func() {
+		application.Logger.Info("http server starting", "addr", server.Addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			application.Logger.Error("http server failed", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+
+	application.Logger.Info("shutdown signal received")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		application.Logger.Error("http shutdown failed", "err", err)
 		os.Exit(1)
 	}
+
+	application.Logger.Info("server stopped")
 }

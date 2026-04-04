@@ -10,6 +10,8 @@ import (
 	"github.com/md-talim/relay/internal/api"
 	"github.com/md-talim/relay/internal/db"
 	"github.com/md-talim/relay/internal/store"
+	"github.com/md-talim/relay/internal/tasks"
+	"github.com/md-talim/relay/internal/worker"
 )
 
 type Application struct {
@@ -18,6 +20,7 @@ type Application struct {
 	Logger        *slog.Logger
 	HealthHandler *api.HealthHandler
 	TaskHandler   *api.TaskHandler
+	WorkerPool    *worker.WorkerPool
 }
 
 func NewApplication(start time.Time) (*Application, error) {
@@ -35,12 +38,18 @@ func NewApplication(start time.Time) (*Application, error) {
 	healthHandler := api.NewHealthHandler(start, pool)
 	taskHandler := api.NewTaskHandler(taskStore, logger)
 
+	registry := tasks.NewDemoRegistry()
+	wp := worker.NewWorkerPool(taskStore, registry, logger, "relay-worker", 4, 250*time.Millisecond)
+
+	healthHandler.IsWorkerReady = wp.Started
+
 	app := &Application{
 		DB:            pool,
 		Start:         start,
 		Logger:        logger,
 		HealthHandler: healthHandler,
 		TaskHandler:   taskHandler,
+		WorkerPool:    wp,
 	}
 
 	return app, nil
