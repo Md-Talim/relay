@@ -41,7 +41,7 @@ func (h *HealthHandler) CheckLiveness(w http.ResponseWriter, r *http.Request) {
 func (h *HealthHandler) CheckReadiness(w http.ResponseWriter, r *http.Request) {
 	resp := healthResponse{
 		Status:  "ok",
-		UptimeS: int64(time.Since(h.start)),
+		UptimeS: time.Since(h.start).Milliseconds(),
 		Checks:  make(map[string]any),
 	}
 
@@ -75,7 +75,7 @@ func (h *HealthHandler) CheckReadiness(w http.ResponseWriter, r *http.Request) {
 		s := "ok"
 		if !h.IsWorkerReady() {
 			s = "fail"
-			overallFail = false
+			overallFail = true
 		}
 		resp.Checks["worker"] = checkResult{Status: s}
 	}
