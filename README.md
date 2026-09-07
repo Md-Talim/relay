@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/dhara-logo.png" alt="Dhara logo" style="max-width: 100%; width: 600px;" />
-</p>
-
 # dhara
 
 **Dhara** is a lightweight, production-focused distributed task queue library and service for Go, backed by PostgreSQL. Designed for simplicity, reliability, and high visibility, Dhara handles the complete task queue lifecycle without requiring heavy external dependencies like Redis or RabbitMQ.
@@ -52,7 +48,7 @@ This project is built from scratch to demonstrate production-grade Go patterns, 
 Dhara uses PostgreSQL as the single source of truth for task state and execution logs.
 
 <p align="center">
-  <img src="assets/new-architecture.png" alt="Dhara architecture diagram" style="max-width: 100%; width: 800px;" />
+  <img src="assets/architecture.png" alt="Dhara architecture diagram" style="max-width: 100%; width: 800px;" />
 </p>
 
 ### The Task Lifecycle Flow
